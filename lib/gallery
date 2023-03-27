@@ -1,0 +1,226 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:dotted_border/dotted_border.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:dio/dio.dart';
+//import 'package:http/http.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:ro_ind_reach/src/api/services/dio_helper.dart';
+import 'package:ro_ind_reach/src/api/services/repo/reach_repo.dart';
+
+import '../../constants/theme/colors.dart';
+import '../api/model/gallery_model.dart';
+
+
+class StaggeredView extends StatefulWidget {
+  const StaggeredView({Key? key}) : super(key: key);
+
+  @override
+  State<StaggeredView> createState() => _StaggeredViewState();
+}
+
+class _StaggeredViewState extends State<StaggeredView> {
+
+  File? addImage;
+ // String? imageUrl;
+  String? usersId="clfhtdoda0000t0nr7o5q624c";
+
+  final  ReachHelper reachHelper=ReachHelper();
+  final ReachRepo reachRepo =ReachRepo();
+  late List<GalleryImage?> galleryList;
+  bool isLoading= false;
+
+
+
+
+  void initState(){
+    super.initState();
+    galleryList=[];
+    getGalleryImage();
+      }
+
+      Future<void> pickPhoto()async {
+        final image = await proPickImage();
+        if (image != null) {
+          final result = await postImage(addImage);
+          setState(() =>galleryList.add(result));
+        }else{
+
+        }
+      }
+
+  getGalleryImage()async{
+
+    Response? response =await reachRepo.getGalleryImage();
+    if (kDebugMode) {
+      print(response);
+    }
+    try{
+      if(response?.statusCode==200){
+        var data =json.encode(response?.data);
+        if (kDebugMode) {
+          print(data);
+        }
+        GalleryModel result = galleryModelFromJson(data);
+        galleryList =result.galleryImages;
+      }
+    }catch(e){
+      throw Exception(e);
+    }
+  }
+
+
+  Future<File?> proPickImage() async {
+    try {
+      final pickedFile =
+      await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 60);
+      if (pickedFile == null) {
+        return null;
+      }
+      final image = File(pickedFile.path);
+      setState(() => addImage = image);
+      return image;
+    } on PlatformException {
+      return null;
+    }
+  }
+
+  // Future proPickImage() async{
+  //   try{
+  //     final proImage = await ImagePicker()
+  //         .pickImage(source: ImageSource.gallery,imageQuality:60 );
+  //     if(proImage==null){
+  //       return;
+  //     }
+  //     final imageTemporary =File(proImage.path);
+  //     setState(() => addImage =imageTemporary);
+  //
+  //   }on PlatformException{
+  //     return "Failed To Pick";
+  //   }
+  // }
+
+  postImage(File? addImage)async{
+    try{
+      Response? response = reachRepo.postGalleryImage(addImage! , usersId as String) as Response? ;
+
+      if(response?.statusCode==200|| response?.statusCode==201){
+        GalleryModel galleryModel =GalleryModel.fromJson(response?.data);
+        return galleryModel;
+      }
+
+    }catch(e){
+      throw Exception(e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colours.lightTheme,
+      appBar: AppBar(
+        toolbarHeight: 105,
+        elevation: 0,
+        titleSpacing: 20,
+      backgroundColor: Colours.lightTheme,
+      leading: IconButton(onPressed: () {
+        Navigator.pop(context);
+      }, icon: Icon(Icons.arrow_back_ios,color: Colors.black,)),
+      title: Text("Gallery",style: TextStyle(color: Colors.black)),
+      ),
+      body: Container(
+        child:StaggeredGridView.countBuilder(
+            crossAxisCount: 2,
+            padding: EdgeInsets.all(12),
+            itemCount: galleryList.length + 1,
+            itemBuilder: ( context,index){
+              return
+                index == galleryList.length
+                  ?GestureDetector(
+                onTap: ()=>pickPhoto(),
+
+                // onTap: () async {
+                //  final image = await proPickImage();
+                //      if (image != null) {
+                //         final result = await postImage(addImage);
+                //          galleryList.add(result);
+                //      }
+                //        },
+                   // child:  addImage == null?
+                    child: DottedBorder(
+                          color: Colors.black,
+                          strokeWidth: 2,
+                          dashPattern: [8,4],
+                          child: Container(
+                            color: const Color(0XFF9FA9B8),
+                            width: double.infinity,
+                            height: double.infinity,
+
+                            child: Icon(Icons.camera_alt_outlined,color: Colors.green),
+
+                          ))
+                    //     :Container(decoration: BoxDecoration(
+                    //     borderRadius: BorderRadius.circular(8),
+                    //     image: DecorationImage(
+                    //         image:FileImage(addImage!),
+                    //         fit: BoxFit.cover)
+                    // ),),
+                  )
+                  :ClipRRect(
+
+                  borderRadius: BorderRadius.circular(8),
+                  child: SizedBox(
+                      child:Image.network(galleryList[index]!.imageUrl,fit: BoxFit.cover,)
+                  )
+              );
+              // Container(decoration: BoxDecoration(
+              //   borderRadius: BorderRadius.circular(8),
+              //   image: DecorationImage(
+              //       image:NetworkImage(galleryList[index]!.imageUrl),
+              //   fit: BoxFit.cover)
+              // ),);
+            },
+            staggeredTileBuilder: (int index)=> StaggeredTile.count(
+
+    index == 0?1:1,index == 0?1:1,),
+          mainAxisSpacing: 15,
+          crossAxisSpacing: 15,
+
+    )
+      ),
+    );
+  }
+
+
+
+  //
+  // Widget masonryLayout(BuildContext context){
+  //   return MasonryGridView.builder(gridDelegate: SliverSimpleGridDelegateWithFixedCrossAxisCount(
+  //     crossAxisCount: 2,
+  //   ),
+  //
+  //       crossAxisSpacing: 10,
+  //       mainAxisSpacing: 10,
+  //       padding: EdgeInsets.all(12),
+  //       itemCount: 25,
+  //       scrollDirection: Axis.vertical,
+  //       itemBuilder: (context,index){
+  //     return
+  //
+  //
+  //
+  //
+  //       ClipRRect(
+  //     borderRadius: BorderRadius.circular(10),
+  //   child: Image.network("http://source.unsplash.com/random?sig=$index"),
+  //     );
+  //
+  //
+  //   }
+  //   );
+  // }
+}
