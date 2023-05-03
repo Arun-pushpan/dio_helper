@@ -1,0 +1,508 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:auto_size_text/auto_size_text.dart';
+import 'package:external_app_launcher/external_app_launcher.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_rating_stars/flutter_rating_stars.dart';
+import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:get/utils.dart';
+import 'package:dio/dio.dart' as r;
+import 'package:reachout_mobile/model/card_model.dart';
+import 'package:reachout_mobile/model/reach_list.dart';
+import 'package:reachout_mobile/services/repository/card_repo.dart';
+import 'package:reachout_mobile/services/repository/catalogue_repo.dart';
+import 'package:reachout_mobile/services/repository/gallery_repo.dart';
+import 'package:reachout_mobile/services/repository/video_repo.dart';
+import 'package:reachout_mobile/src/video_profile/profile_video.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
+
+import '../../../model/catalogue_gallery.dart';
+// import '../../../model/gallery_model.dart';
+import '../../../model/login/login_model.dart';
+import '../../../model/one_user_model.dart'as c;
+import '../../../model/user_model.dart';
+import '../../../model/video_model.dart'as v;
+import '../../../model/video_model.dart';
+import '../../../services/repository/user_repo.dart';
+import '../../catalog/catalog.dart';
+import '../../catalog/catalogue_gallery.dart';
+import '../../company_profile/pdfviewpage.dart';
+import '../../company_profile/profile_pdf.dart';
+import '../../gallery/staggered_view.dart';
+import '../../individual/home_main/home_screen.dart';
+import '../../qr_scanner/qr_card.dart';
+import '../../video_profile/videoInternet.dart';
+import '../../video_profile/video_Play.dart';
+
+
+
+class ReachProfile extends StatefulWidget {
+  final User user;
+  const ReachProfile({Key? key,  required this.user}) : super(key: key);
+
+  @override
+  State<ReachProfile> createState() => _ReachProfileState();
+}
+
+class _ReachProfileState extends State<ReachProfile> {
+
+
+  final UserRepo userRepo =UserRepo();
+
+  VideoPlayerController? _controller;
+
+  late List<c.Card>? cardsList;
+  late List<c.GalleryImage>? galleryList;
+  late List<c.VideoProfile>? videoList;
+  late List<c.Catalogue?> catalogueList;
+  late List<c.Profile?>profileList;
+  Future<void>?_video;
+
+  double value =0;
+  int currentVideoIndex=0;
+  late bool  isLoading;
+  late LoginModel? _user;
+
+  String? userId;
+  String? firstImageUrl;
+  String?  lastImage;
+
+
+  void initState(){
+    super.initState();
+    getOneUser();
+
+    cardsList=[];
+    catalogueList=[];
+    galleryList=[];
+    profileList=[];
+    if (galleryList!.isNotEmpty) {
+      firstImageUrl = galleryList!.first?.imageUrl.toString();
+    }
+    videoList=[];
+    if(videoList!.isNotEmpty){
+      _video =videoList![0]!.videoUrl.toString() as Future<void>? ;
+    }
+
+    if(catalogueList.isNotEmpty){
+      lastImage=catalogueList.first?.catalogueImages.first.imageUrl.toString();
+    }
+    isLoading=true;
+  }
+
+  getOneUser() async{
+    try{
+      setState(() {
+        isLoading = true;
+      });
+
+      r.Response? response=await userRepo.getOneUser(widget.user.usersId);
+      userId=widget.user.usersId;
+      if(response!.statusCode == 200){
+        var s1=json.encode(response.data);
+        c.OneUserModel oneUserModel=c.oneUserModelFromJson(s1);
+        c.Users users =oneUserModel.users;
+        setState(() {
+          cardsList=oneUserModel.users.cards;
+          catalogueList=oneUserModel.users.catalogue!;
+          galleryList=oneUserModel.users.galleryImages;
+          profileList=oneUserModel.users.profile!;
+          videoList=oneUserModel.users.videoProfile;
+          _controller = VideoPlayerController.network(videoList![1]!.videoUrl.toString());
+          _video=_controller!.initialize();
+          isLoading=false;
+        });
+
+      }
+    }catch(e){
+      print(e.toString());
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  Widget CrdView() {
+    if (cardsList!.isEmpty) {
+      return SizedBox();
+    }
+    return Center(
+      child:cardsList!=null?
+      Container(
+        height: MediaQuery.of(context).size.height *0.25,
+        width: MediaQuery.of(context).size.width *0.83,
+        decoration: BoxDecoration(
+            image: DecorationImage(
+              image: NetworkImage(cardsList![0].cardImages.imageUrl),
+              fit: BoxFit.cover,),
+            borderRadius: BorderRadius.circular(20)
+        ),
+        child: Column(
+          children: [
+            Row(mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 15,top: 8),
+                  child: InkWell(onTap: (){
+                    Navigator.of(context).push(
+                        MaterialPageRoute(builder: (context) => cardQr(),));},
+                      child: Icon(Icons.qr_code,color: Colors.white,)),
+                )
+              ],
+            ),
+            Row(
+              children: [
+
+                Padding(
+                  padding: const EdgeInsets.only(left: 58),
+                  child: AutoSizeText("${cardsList!.first.fullName}",
+                      style: TextStyle(fontWeight: FontWeight.w700,
+                          fontSize: 20,color: Colors.white)),
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 100,top: 17),
+              child: InkWell(onTap: (){
+                launchUrl(Uri.parse("mailto:${cardsList!.first.email}"));
+              },
+                child: Row(
+                  children: [
+                    Icon(Icons.email_outlined,size: 20,color: Colors.white,),
+                    SizedBox(width: MediaQuery.of(context).size.width*0.01,),
+                    AutoSizeText("${cardsList!.first.email}",
+                      style: TextStyle(color: Colors.white,fontSize: 15,
+                          fontWeight: FontWeight.w400),)
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 100,top: 17),
+              child: InkWell(onTap: (){
+                launchUrl(Uri.parse("tel://${cardsList!.first.phone}"));
+              },
+                child: Row(
+                  children: [
+                    Icon(Icons.call_outlined,size: 20,color: Colors.white,),
+                    SizedBox(width: MediaQuery.of(context).size.width*0.01,),
+                    AutoSizeText(cardsList!.first.phone,
+                      style: TextStyle(color: Colors.white,
+                          fontSize: 15,fontWeight: FontWeight.w400),)
+                  ],
+                ),
+              ),
+            ),
+
+            Padding(
+              padding: const EdgeInsets.only(top: 17),
+              child: Row(
+                children: [
+                  IconButton(onPressed: () async{
+                    await LaunchApp.openApp(androidPackageName: "com.instagram.android",);
+                  },
+                      icon: ImageIcon(AssetImage("assets/icons/instagram.png"),color: Colors.white,)),
+                  SizedBox(width: MediaQuery.of(context).size.width*0.01,),
+                  IconButton(onPressed:() async{
+                    await LaunchApp.openApp(androidPackageName: "com.whatsapp",);
+                  },
+                      icon:ImageIcon(AssetImage("assets/icons/whatsapp.png"),color: Colors.white,)),
+                  SizedBox(width: MediaQuery.of(context).size.width*0.01,),
+                  IconButton(onPressed:() async{
+                    await LaunchApp.openApp(androidPackageName: "com.twitter.android",);
+                  },
+                      icon: ImageIcon(AssetImage("assets/icons/twitter.png"),color: Colors.white,)),
+                  SizedBox(width: MediaQuery.of(context).size.width*0.01,),
+                  IconButton(onPressed:() async{
+                    await LaunchApp.openApp(androidPackageName: "com.facebook.katana",);
+                  },
+                      icon: ImageIcon(AssetImage("assets/icons/facebook.png"),color: Colors.white,)),
+                ],
+              ),
+            )
+          ],
+        ),
+      ): CircularProgressIndicator()
+    );
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+        child: Scaffold(
+          resizeToAvoidBottomInset: true,
+          backgroundColor:Color(0XFFE9FEF8),
+          appBar: AppBar(
+            elevation: 0,
+            backgroundColor:context.theme.backgroundColor ,
+            leading: IconButton(
+              color: Colors.black, onPressed: () {
+                Navigator.pop(context);
+            },
+              icon: Icon(Icons.arrow_back_ios,size: 30,)),
+          ),
+          body: Column(
+            children: [
+              SizedBox(height: MediaQuery.of(context).size.height*0.04,),
+              CircleAvatar(
+                radius: 70,
+                backgroundImage: NetworkImage(widget.user.photoUrl.toString()),
+              ),
+              SizedBox(height: MediaQuery.of(context).size.height*0.03,),
+              RatingStars(
+              //  value: profileList[0]!.rating.toDouble(),
+               // starBuilder: (index, color) => profileList[0]!.rating != null && profileList[0]!.rating.toString().isNotEmpty
+                 //   ? Icon(Icons.star, color: Colors.yellow, size: 35)
+                   // : Icon(Icons.star, color: color, size: 35),
+
+                starCount: 5,
+                starSize: 25,
+                valueLabelColor: const Color(0xff9b9b9b),
+                valueLabelTextStyle:const TextStyle(
+                  //
+                    color: Colors.white,
+                    fontWeight: FontWeight.w400,
+                    fontStyle: FontStyle.normal,
+                    fontSize: 12.0) ,
+                maxValue: 5,
+                starSpacing: 2,
+                maxValueVisibility: true,
+                valueLabelVisibility: false,
+                valueLabelRadius: 10,
+                valueLabelPadding:
+                const EdgeInsets.symmetric(vertical: 1, horizontal: 8),
+                valueLabelMargin: const EdgeInsets.only(right: 8),
+                starColor: Colors.yellow,
+                starOffColor:const Color(0xffe7e8ea) ,
+              ),
+              SizedBox(height: MediaQuery.of(context).size.height*0.01,),
+              Text("${widget.user.firstName} ${ widget.user.lastName}",
+                  style: TextStyle(fontWeight:FontWeight.w700,
+                      fontSize: 18,color: Colors.black )),
+              const SizedBox(height: 10,),
+              Text(widget.user.role.toString(),
+                  style: TextStyle(color: Colors.black,
+                      fontSize:12,fontWeight: FontWeight.w500)),
+              const SizedBox(height: 10,),
+              Row(mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.location_on_outlined,
+                      size: 20,color: Colors.black),
+                  Text("Manchester,England",
+                    style: TextStyle(fontWeight: FontWeight.w500,
+                        fontSize: 12,color: Colors.black),),
+
+                ],
+              ),const SizedBox(height: 10,),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  OutlinedButton(
+                    onPressed: () {},
+                    style: OutlinedButton.styleFrom(
+                      side:const BorderSide(width: 2.0,color: Colors.black),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text('Reach',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.black,
+                      ),),
+                  ),
+                  const SizedBox(width: 40,),
+                  OutlinedButton(
+                    onPressed: () {},
+                    style: OutlinedButton.styleFrom(
+                      side:const BorderSide(width: 2.0,color: Colors.black),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text('  Chat  ',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.black,),),
+                  )
+                ],
+              ),SizedBox(height: MediaQuery.of(context).size.height*0.02,),
+
+              CrdView(),
+              const SizedBox(height: 20,),
+
+              Container(
+                height:MediaQuery.of(context).size.height*0.14 ,
+                width: MediaQuery.of(context).size.width,
+                child: ListView(physics: AlwaysScrollableScrollPhysics(),
+                    scrollDirection: Axis.horizontal,children:[
+                      Row(
+                        children: [
+                          SizedBox(width: MediaQuery.of(context).size.width*0.01 ,),
+                          InkWell(onTap: () {
+                            //navigatedToNextPage(widget.user.usersId);
+                            Navigator.of(context).push(
+                                MaterialPageRoute(builder: (context) =>
+
+                                    StaggeredView(userId:widget.user.usersId,),));
+                          },
+                            child: Column(
+                              children:  [
+                                CircleAvatar(
+
+                                  radius: 40,
+                                  backgroundColor:const Color(0XFFD9D9D9) ,
+                                  backgroundImage:(firstImageUrl!= null)?
+                                  NetworkImage(firstImageUrl!):(galleryList!.isNotEmpty?
+                                  NetworkImage(galleryList!.first!.imageUrl.toString()):null),
+                                  child: galleryList!.isEmpty?
+                                  const Icon(Icons.add,size: 50,color: Colors.black):null,
+                                ),
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 5,bottom: 10),
+                                  child: Text("Gallery",
+                                    style: TextStyle(color: Colors.black,
+                                      fontSize: 15,fontWeight: FontWeight.w400,),),
+                                )
+                              ],
+                            ),
+                          ),
+                          SizedBox(width: MediaQuery.of(context).size.width*0.12 ,),
+                          InkWell(onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (context) =>
+                                  Video11(userId: widget.user.usersId,)
+                             ,),);
+
+                          },
+                            child:
+                            Column(
+                              children:  [
+                                CircleAvatar(
+
+                                  radius: 40,
+                                  backgroundColor: const Color(0XFFD9D9D9),
+                                  child: videoList!.isNotEmpty
+                                      ? FutureBuilder(
+                                    future: _video,
+                                    builder: (context, snapshot) {
+                                      if (snapshot.connectionState == ConnectionState.done) {
+                                        return ClipRRect(
+                                          borderRadius: BorderRadius.circular(50),
+                                          child: SizedBox(
+                                            width: 100,
+                                            height: 100,
+                                            child: AspectRatio(
+                                              aspectRatio: _controller!.value.aspectRatio,
+                                              child:
+                                              VideoPlayer(_controller!),
+                                            ),
+                                          ),
+                                        );
+                                      } else {
+                                        return const CircularProgressIndicator(
+                                          color: Color(0XFFD9D9D9),
+
+                                        );
+                                      }
+                                    },
+                                  )
+                                      : SpinKitSpinningLines(
+                                    color: Color(0XFFD9D9D9),
+                                    //  size: 50.0,
+                                  )
+                                  // You c, // Empty container as child when videoList is empty
+                                ),
+
+
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 5),
+                                  child: Text("Video",
+                                    style: TextStyle(color: Colors.black,
+                                      fontSize: 15,fontWeight: FontWeight.w400,),),
+                                )
+                              ],
+                            ),
+                          ),
+                          SizedBox(width: MediaQuery.of(context).size.width*0.12 ,),
+                          InkWell(onTap: () {
+                            Navigator.of(context).push(MaterialPageRoute(builder:
+                                (context) =>  CatalogueGallery(userId:widget.user.usersId)));
+                          },
+                            child: Column(
+                              children: [
+                                CircleAvatar(
+
+                                    radius: 40,
+                                    backgroundColor:const Color(0XFFD9D9D9) ,
+                                    backgroundImage: (lastImage!= null)?
+                                    NetworkImage(lastImage!):(catalogueList.isNotEmpty ?
+                                    NetworkImage(catalogueList.first!.catalogueImages.first.imageUrl.toString()
+                                    ):null),
+                                    child: catalogueList.isEmpty?
+                                    const Icon(Icons.add,size: 50,color: Colors.black):null
+                                ),
+
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 5),
+                                  child: Text("Catalogue",
+                                    style: TextStyle(color: Colors.black,
+                                      fontSize: 15,fontWeight: FontWeight.w400,),),
+                                )
+                              ],
+                            ),
+                          ),
+                          SizedBox(width: MediaQuery.of(context).size.width*0.12 ,),
+                          InkWell(onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (context) => ProfilePdf(),),);
+                          },
+                            child: Column(
+                              children: [
+                                CircleAvatar(
+                                  backgroundImage: NetworkImage("https://media.istockphoto.com/id/1432561137/"
+                                      "photo/pdf-file-icon-3d-render-illustration.jpg?b=1&s=170667a&w=0&k=20&c="
+                                      "7rbx01j4rrdbhBi0u20hy5EBmdTP-CPub4ZfMj4U_co="),
+                                  radius: 40,
+                                  backgroundColor:Color(0XFFD9D9D9) ,
+                                 // child:
+                                 // Icon(Icons.add,size: 50,color: Colors.black),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 5),
+                                  child: Text("Company \n   Profile",
+                                    style: TextStyle(color: Colors.black,
+                                      fontSize: 15,fontWeight: FontWeight.w400,),),
+                                )
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ]),
+              )
+            ],
+          ),
+        ));
+  }
+
+
+  Future<File?> pickFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf'],
+    );
+    if (result == null) return null;
+    return File(result.paths.first ?? '');
+  }
+
+  void openPdf(
+      BuildContext context,
+      File file,
+      ) =>
+      Navigator.of(context).push(MaterialPageRoute(builder: (context) => PDFpageview(file: file,),),);
+}
